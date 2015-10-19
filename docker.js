@@ -935,33 +935,6 @@ module.exports = function(kbox) {
   };
 
   /*
-   * Consume a docker build image or pull image stream.
-   */
-  var consumeBuildOrPullStream = function(stdout) {
-
-    return new Promise(function(fulfill, reject) {
-      // Make sure stream serves strings rather than buffers.
-      stdout.setEncoding('utf8');
-      stdout.on('data', function(data) {
-        try {
-          // Parse and log json.
-          var json = JSON.parse(data);
-          log.info(json);
-          if (json.error) {
-            reject(new Error(pp(json)));
-          }
-        } catch (err) {
-          // Error trying to parse json, so just treat it as a string.
-          log.info(data);
-        }
-      });
-      // Fulfill promise when the stream is finished.
-      stdout.on('end', fulfill);
-    });
-
-  };
-
-  /*
    * Build a docker image from a dockerfile.
    */
   var buildInternal = function(image) {
@@ -1012,11 +985,17 @@ module.exports = function(kbox) {
             t: image.name
           };
           dockerInstance.buildImage(tarStream, buildOpts, cb);
+        })
+        // Follow progress of build.
+        .then(function(stream) {
+          return Promise.fromNode(function(cb) {
+            dockerInstance.modem.followProgress(stream, cb, function(evt) {
+              log.info(evt);
+            });
+          });
         });
       });
     })
-    // Monitor the output of the building of the image.
-    .then(consumeBuildOrPullStream)
     // Log success.
     .tap(function() {
       log.info('Building image complete.', image);
@@ -1042,16 +1021,22 @@ module.exports = function(kbox) {
     // Log start.
     log.info('Pulling image.', image);
 
-    // Start pulling docker image.
+    // Get docker instance.
     return dockerInstance()
     .then(function(dockerInstance) {
+      // Start pulling docker image.
       return Promise.fromNode(function(cb) {
         dockerInstance.pull(image.name, cb);
+      })
+      // Follow progress of pull.
+      .then(function(stream) {
+        return Promise.fromNode(function(cb) {
+          dockerInstance.modem.followProgress(stream, cb, function(evt) {
+            log.info(evt);
+          });
+        });
       });
     })
-    // Consume stdout from pulling docker image.
-    // Monitor the output of the building of the image.
-    .then(consumeBuildOrPullStream)
     // Log success.
     .tap(function() {
       log.info('Pulling image complete.', image);

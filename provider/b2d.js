@@ -627,7 +627,8 @@ module.exports = function(kbox) {
       var config = {
         protocol: 'http',
         host: ip,
-        port: '2375'
+        port: '2375',
+        timeout: 1 * 60 * 1000 // 1 minute timeout.
       };
       return config;
     });
